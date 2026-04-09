@@ -83,9 +83,20 @@
     </div>
 
     <script>
+        let formattedMessages = []; // Store for copy/save
+
+        function getFormattedText() {
+            if (formattedMessages.length === 0) return '';
+            
+            return formattedMessages.map(msg => {
+                const header = `${msg.name} (${msg.dateTime}):`;
+                const content = msg.content.trim();
+                return `${header}\n${content}`;
+            }).join('\n\n' + '─'.repeat(50) + '\n\n');
+        }
+
         function copyOutput() {
-            const output = document.getElementById('output');
-            const text = output.innerText;
+            const text = getFormattedText();
             if (!text.trim()) {
                 alert('No formatted text to copy.');
                 return;
@@ -98,8 +109,7 @@
         }
 
         function saveAsText() {
-            const output = document.getElementById('output');
-            const text = output.innerText;
+            const text = getFormattedText();
             if (!text.trim()) {
                 alert('No formatted text to save.');
                 return;
@@ -224,8 +234,11 @@
             // Render output
             if (messages.length === 0) {
                 output.innerHTML = '<em>No messages found in the text.</em>';
+                formattedMessages = [];
                 return;
             }
+
+            formattedMessages = messages; // Store for copy/save
 
             output.innerHTML = messages.map(msg => 
                 `<div class="message">` +

@@ -125,22 +125,29 @@
             }
 
             const lines = text.split('\n');
-            const dateTimeRegex = /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+\d{1,2}:\d{2}\s*(?:AM|PM)?|Yesterday\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)$/i;
+            const dateTimeRegex = /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+\d{1,2}:\d{2}\s*(?:AM|PM)?|\d{1,2}:\d{2}\s*(?:AM|PM)|Yesterday\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)$/i;
             
-            // Auto-detect names: find lines where the next line is a date/time
+            // Auto-detect names: find lines where date/time appears nearby (next line or 2 lines down)
             const detectedNames = new Set();
             for (let i = 0; i < lines.length - 1; i++) {
                 const line = lines[i].trim();
                 const nextLine = lines[i + 1]?.trim() || '';
+                const lineAfter = lines[i + 2]?.trim() || '';
                 
-                if (line && dateTimeRegex.test(nextLine)) {
-                    // Extract name from "... by Name" or "^ by Name" pattern, or use line directly
-                    const byMatch = line.match(/\s+by\s+(.+)$/);
-                    if (byMatch) {
-                        detectedNames.add(byMatch[1]);
-                    } else {
-                        detectedNames.add(line);
+                // Check if this line ends with "by [Name]"
+                const byMatch = line.match(/\s+by\s+(.+)$/);
+                
+                if (byMatch) {
+                    const potentialName = byMatch[1];
+                    // Format 1: [preview] by [Name] → [Date/Time]
+                    // Format 2: [preview] by [Name] → [Name] → [Date/Time]
+                    if (dateTimeRegex.test(nextLine) || 
+                        (nextLine === potentialName && dateTimeRegex.test(lineAfter))) {
+                        detectedNames.add(potentialName);
                     }
+                } else if (line && dateTimeRegex.test(nextLine)) {
+                    // No "by" prefix - line itself is the name
+                    detectedNames.add(line);
                 }
             }
             
@@ -156,35 +163,54 @@
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
+                const nextLine = lines[i + 1]?.trim() || '';
+                const lineAfter = lines[i + 2]?.trim() || '';
                 
                 // Check if this line contains a name we detected (exact match or ends with "by Name")
                 const matchedName = names.find(n => line === n || line.endsWith(' by ' + n));
                 
-                // Check if next line is a date/time
-                const nextLine = lines[i + 1]?.trim() || '';
-                const isDateTime = dateTimeRegex.test(nextLine);
-                
-                if (matchedName && isDateTime) {
-                    // Save previous message
-                    if (currentMessage && currentMessage.content.trim()) {
-                        messages.push(currentMessage);
+                if (matchedName) {
+                    // Format 1: [line with name] → [Date/Time] → [Name] → [Message]
+                    // Format 2: [line with name] → [Name] → [Date/Time] → [Message]
+                    let dateTime = null;
+                    let skipLines = 0;
+                    
+                    if (dateTimeRegex.test(nextLine)) {
+                        // Format 1
+                        dateTime = nextLine;
+                        skipLines = 2;
+                        // Skip repeated name after date if present
+                        if (lines[i + 2]?.trim() === matchedName) {
+                            skipLines = 3;
+                        }
+                    } else if (nextLine === matchedName && dateTimeRegex.test(lineAfter)) {
+                        // Format 2
+                        dateTime = lineAfter;
+                        skipLines = 3;
                     }
                     
-                    // Start new message
-                    currentMessage = {
-                        name: matchedName,
-                        dateTime: nextLine,
-                        content: ''
-                    };
-                    i += 2; // Skip the date line and the repeated name line
-                    
-                    // Skip the repeated name if it exists
-                    if (lines[i]?.trim() === matchedName) {
-                        i++;
+                    if (dateTime) {
+                        // Save previous message
+                        if (currentMessage && currentMessage.content.trim()) {
+                            messages.push(currentMessage);
+                        }
+                        
+                        // Start new message
+                        currentMessage = {
+                            name: matchedName,
+                            dateTime: dateTime,
+                            content: ''
+                        };
+                        i += skipLines - 1; // -1 because the loop will i++
+                    } else if (currentMessage) {
+                        // Not a header, add to content
+                        if (!line.endsWith(' by ' + currentMessage.name)) {
+                            currentMessage.content += line + '\n';
+                        }
                     }
                 } else if (currentMessage) {
-                    // Add to current message content (skip lines that end with "by [Name]")
-                    if (line && !line.endsWith(' by ' + currentMessage.name)) {
+                    // Add to current message content
+                    if (line) {
                         currentMessage.content += line + '\n';
                     }
                 }

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MS Teams Text Formatter</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #6264a7; }
+        .section {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        label { font-weight: 600; display: block; margin-bottom: 5px; }
+        input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 300px;
+        }
+        button {
+            padding: 8px 16px;
+            background: #6264a7;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        button:hover { background: #4b4d8c; }
+        .name-tag {
+            display: inline-block;
+            background: #e8e8f0;
+            padding: 4px 10px;
+            margin: 3px;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+        .name-tag .remove {
+            margin-left: 8px;
+            color: #999;
+            cursor: pointer;
+        }
+        .name-tag .remove:hover { color: #c00; }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        #output {
+            white-space: pre-wrap;
+            font-family: 'Segoe UI', monospace;
+            background: #fafafa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            min-height: 100px;
+        }
+        .message {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .message:last-child { border-bottom: none; }
+        .message-header {
+            font-weight: 600;
+            color: #6264a7;
+        }
+        .message-content {
+            margin-top: 4px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>MS Teams Text Formatter</h1>
+    
+    <div class="section">
+        <label>Add Names (used to identify message authors):</label>
+        <p style="font-size: 13px; color: #666; margin: 5px 0 10px 0;">
+            ⚠️ Names must be typed <strong>exactly</strong> as they appear in Teams (including punctuation and parentheses).
+        </p>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <input type="text" id="nameInput" placeholder="e.g., Smith, John. (OIT Alaska)">
+            <button onclick="addName()">Add Name</button>
+        </div>
+        <div style="margin-top: 10px;">
+            <label style="font-size: 13px; color: #666;">Saved names (click to use, × to delete):</label>
+            <div id="savedNamesList" style="margin-top: 5px;"></div>
+        </div>
+        <div style="margin-top: 10px;">
+            <label style="font-size: 13px; color: #666;">Active names for this session:</label>
+            <div id="namesList" style="margin-top: 5px;"></div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <label>Paste Teams Chat Text:</label>
+        <textarea id="teamsText" placeholder="Paste your copied Teams chat here..."></textarea>
+        <button onclick="formatText()" style="margin-top: 10px;">Format</button>
+    </div>
+    
+    <div class="section">
+        <label>Formatted Output:</label>
+        <div style="margin-bottom: 10px;">
+            <button onclick="copyOutput()">📋 Copy to Clipboard</button>
+            <button onclick="saveAsText()">💾 Save as Text File</button>
+        </div>
+        <div id="output"></div>
+    </div>
+
+    <script>
+        let names = [];
+        let savedNames = JSON.parse(localStorage.getItem('teamsFormatterNames') || '[]');
+
+        // Initialize dropdown on load
+        document.addEventListener('DOMContentLoaded', () => {
+            renderSavedNames();
+        });
+
+        function renderSavedNames() {
+            const savedList = document.getElementById('savedNamesList');
+            if (savedNames.length === 0) {
+                savedList.innerHTML = '<em style="color: #999;">No saved names yet. Add one above.</em>';
+            } else {
+                savedList.innerHTML = savedNames.map((name, i) => 
+                    `<span class="name-tag saved-name" style="cursor: pointer; background: #d4e8d4;" onclick="useSavedName(${i})">
+                        ${name}
+                        <span class="remove" onclick="event.stopPropagation(); deleteSavedName(${i})">×</span>
+                    </span>`
+                ).join('');
+            }
+        }
+
+        function useSavedName(index) {
+            const name = savedNames[index];
+            if (name && !names.includes(name)) {
+                names.push(name);
+                renderNames();
+            }
+        }
+
+        function addName() {
+            const input = document.getElementById('nameInput');
+            const name = input.value.trim();
+            if (name && !names.includes(name)) {
+                names.push(name);
+                // Also save to localStorage if not already saved
+                if (!savedNames.includes(name)) {
+                    savedNames.push(name);
+                    localStorage.setItem('teamsFormatterNames', JSON.stringify(savedNames));
+                    renderSavedNames();
+                }
+                renderNames();
+                input.value = '';
+            }
+        }
+
+        function removeName(index) {
+            names.splice(index, 1);
+            renderNames();
+        }
+
+        function deleteSavedName(index) {
+            const name = savedNames[index];
+            if (confirm(`Remove "${name}" from saved names?`)) {
+                savedNames.splice(index, 1);
+                localStorage.setItem('teamsFormatterNames', JSON.stringify(savedNames));
+                renderSavedNames();
+            }
+        }
+
+        function renderNames() {
+            const container = document.getElementById('namesList');
+            container.innerHTML = names.map((name, i) => 
+                `<span class="name-tag">${name}<span class="remove" onclick="removeName(${i})">×</span></span>`
+            ).join('');
+        }
+
+        function escapeRegex(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function copyOutput() {
+            const output = document.getElementById('output');
+            const text = output.innerText;
+            if (!text.trim()) {
+                alert('No formatted text to copy.');
+                return;
+            }
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        function saveAsText() {
+            const output = document.getElementById('output');
+            const text = output.innerText;
+            if (!text.trim()) {
+                alert('No formatted text to save.');
+                return;
+            }
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'teams-chat-' + new Date().toISOString().slice(0, 10) + '.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function formatText() {
+            const text = document.getElementById('teamsText').value;
+            const output = document.getElementById('output');
+            
+            if (names.length === 0) {
+                output.innerHTML = '<em>Please add at least one name first.</em>';
+                return;
+            }
+
+            // Build regex pattern for names
+            const namePattern = names.map(escapeRegex).join('|');
+            
+            // Pattern to match: "... by [Name]\n[Date] [Time]\n[Name]\n\n[Message]"
+            // Or messages without preview: "[Name]\n[Date] [Time]\n[Name]\n\n[Message]"
+            const messageRegex = new RegExp(
+                `(?:^|\\n)(?:[^\\n]*?\\.\\.\\.\\s*by\\s+)?(${namePattern})\\n` +  // Name (with optional "... by" prefix)
+                `(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?\\s+\\d{1,2}:\\d{2}\\s*(?:AM|PM)?)\\n` +  // Date time
+                `(?:${namePattern})\\n` +  // Name repeated (we skip this)
+                `\\n?([\\s\\S]*?)(?=(?:\\n[^\\n]*?\\.\\.\\.\\s*by\\s+(?:${namePattern})|\\n(?:${namePattern})\\n\\d{1,2}\\/\\d{1,2})|$)`,  // Message content
+                'gi'
+            );
+
+            const messages = [];
+            let match;
+            
+            // Simpler approach: split by the date/time pattern after a name
+            const lines = text.split('\n');
+            let currentMessage = null;
+            const dateTimeRegex = /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+\d{1,2}:\d{2}\s*(?:AM|PM)?|Yesterday\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)$/i;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Check if this line is a name we recognize
+                const isName = names.some(n => line === n || line.endsWith('... by ' + n) || line.includes('... by ' + n));
+                const matchedName = names.find(n => line === n || line.includes(n));
+                
+                // Check if next line is a date/time
+                const nextLine = lines[i + 1]?.trim() || '';
+                const isDateTime = dateTimeRegex.test(nextLine);
+                
+                if (matchedName && isDateTime) {
+                    // Save previous message
+                    if (currentMessage && currentMessage.content.trim()) {
+                        messages.push(currentMessage);
+                    }
+                    
+                    // Start new message
+                    currentMessage = {
+                        name: matchedName,
+                        dateTime: nextLine,
+                        content: ''
+                    };
+                    i += 2; // Skip the date line and the repeated name line
+                    
+                    // Skip the repeated name if it exists
+                    if (lines[i]?.trim() === matchedName) {
+                        i++;
+                    }
+                } else if (currentMessage) {
+                    // Add to current message content
+                    if (line && !line.endsWith('... by ' + currentMessage.name)) {
+                        currentMessage.content += line + '\n';
+                    }
+                }
+            }
+            
+            // Don't forget the last message
+            if (currentMessage && currentMessage.content.trim()) {
+                messages.push(currentMessage);
+            }
+
+            // Render output
+            if (messages.length === 0) {
+                output.innerHTML = '<em>No messages found. Make sure the names match exactly.</em>';
+                return;
+            }
+
+            output.innerHTML = messages.map(msg => 
+                `<div class="message">` +
+                `<div class="message-header">${msg.name} (${msg.dateTime}):</div>` +
+                `<div class="message-content">${msg.content.trim()}</div>` +
+                `</div>`
+            ).join('');
+        }
+
+        // Allow Enter key to add names
+        document.getElementById('nameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addName();
+        });
+    </script>
+</body>
+</html>
